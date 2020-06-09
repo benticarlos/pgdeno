@@ -1,5 +1,11 @@
+import { Client } from "https://deno.land/x/postgres/mod.ts";
 import { v4 } from 'https://deno.land/std/uuid/mod.ts' // v4 is object that generate data from id
 import { Product } from '../types.ts';
+import { dbCreds } from "../config.ts";
+
+// Init client
+const client = new Client(dbCreds)
+
 let products: Product[] = [
     {
         id: "1",
@@ -55,6 +61,7 @@ const getProduct = ({ params, response }: { params: { id: string }, response: an
 // @route POST /api/v1/product/
 const addProduct = async ({ request, response }: { request: any, response: any }) => {
     const body = await request.body()
+    const product = body.value
 
     if (!request.hasBody) {
         response.status = 400
@@ -63,14 +70,29 @@ const addProduct = async ({ request, response }: { request: any, response: any }
             msg: 'No data'
         }
     } else {
-        const product: Product = body.value
-        product.id = v4.generate()
-        products.push(product)
-        response.status = 201
-        response.body = {
-            sucess: true,
-            data: product
+        try {
+            await client.connect()
+
+            const result = await client.query("INSERT INTO products(name,description,price) VALUES($1,$2,$3)",
+                product.name,
+                product.description,
+                product.price)
+
+            response.status = 201
+            response.body = {
+                sucess: true,
+                data: product
+            }
+        } catch (err) {
+            response.status = 500
+            response.body = {
+                sucess: false,
+                msg: err.toString()
+            }
+        } finally {
+            await client.end()
         }
+
     }
 }
 
@@ -80,9 +102,9 @@ const updateProduct = async ({ params, request, response }: { params: { id: stri
     const product: Product | undefined = products.find(p => p.id === params.id)
 
     if (product) {
-        const body =  await request.body()
+        const body = await request.body()
 
-        const updateData: { name?: string; description?: string; price?: number} = body.value
+        const updateData: { name?: string; description?: string; price?: number } = body.value
 
         products = products.map(p => p.id === params.id ? { ...p, ...updateData } : p)
 
